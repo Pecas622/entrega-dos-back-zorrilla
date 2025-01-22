@@ -1,0 +1,17 @@
+const express = require('express');
+const router = express.Router();
+const fs = require('fs');
+
+// Cargar productos desde el archivo JSON
+const getProducts = () => {
+    const data = fs.readFileSync('./src/products.json', 'utf-8');
+    return JSON.parse(data);
+};
+
+// Ruta para obtener productos en tiempo real
+router.get('/realTimeProducts', (req, res) => {
+    const products = getProducts();
+    res.json(products);
+});
+
+module.exports = router;

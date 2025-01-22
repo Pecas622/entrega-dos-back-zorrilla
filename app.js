@@ -6,6 +6,7 @@ import cartsRouter from './routes/carts.js';
 import Product from './models/Products.js'; 
 import session from 'express-session';
 import Cart from './models/Cart.js';
+import { Server } from 'socket.io';
 
 const app = express();
 const PORT = 3000;
@@ -14,7 +15,6 @@ const PORT = 3000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
-
 
 // Configuración de Handlebars
 app.engine('handlebars', handlebars.engine());
@@ -33,29 +33,42 @@ mongoose.connect('mongodb://localhost:27017/ecommerce', {
 app.use('/api/products', productsRouter);
 app.use('/api/carts', cartsRouter);
 
+// Servidor HTTP y configuración de socket.io
+const server = app.listen(PORT, () => {
+    console.log(`Servidor ejecutándose en http://localhost:${PORT}`);
+});
+
+const io = new Server(server);
+
+io.on('connection', (socket) => {
+    console.log('Nuevo cliente conectado');
+
+    socket.on('disconnect', () => {
+        console.log('Cliente desconectado');
+    });
+});
+
 // Ruta raíz
 app.get('/', async (req, res) => {
+    if (!req.session.cartId) {
+        // Si el carrito no existe en la sesión, crear uno nuevo
+        const newCart = new Cart({ products: [] });
+        await newCart.save();
+        req.session.cartId = newCart._id; 
+    }
+
+    // Cargar productos para mostrarlos en la vista
+    const products = await Product.find();
+    res.render('home', { products, cartId: req.session.cartId });
+});
+
+// Ruta para productos en tiempo real
+app.get('/realTimeProducts', async (req, res) => {
     try {
-        const products = await Product.find().lean();  
-        res.render('home', { products });
+        const products = await Product.find().lean();
+        res.render('realTimeProducts', { products });
     } catch (error) {
         res.status(500).json({ status: 'error', message: error.message });
-    }
-});
-app.get('/cart/:cid', async (req, res) => {
-    const { cid } = req.params;
-    
-    try {
-        
-        const cart = await Cart.findById(cid).populate('products.product');
-        if (!cart) {
-            return res.status(404).render('error', { message: 'Carrito no encontrado' });
-        }
-
-        
-        res.render('cart', { cart });
-    } catch (error) {
-        res.status(500).render('error', { message: 'Error al cargar el carrito' });
     }
 });
 
@@ -73,20 +86,3 @@ app.use(session({
     resave: false,
     saveUninitialized: true,
 }));
-
-app.get('/', async (req, res) => {
-    if (!req.session.cartId) {
-        // Si el carrito no existe en la sesión, crear uno nuevo
-        const newCart = new Cart({ products: [] });
-        await newCart.save();
-        req.session.cartId = newCart._id; 
-    }
-
-    // Cargar productos para mostrarlos en la vista
-    const products = await Product.find();
-    res.render('home', { products, cartId: req.session.cartId });
-});
-// Inicio del servidor
-app.listen(PORT, () => {
-    console.log(`Servidor ejecutándose en http://localhost:${PORT}`);
-});
